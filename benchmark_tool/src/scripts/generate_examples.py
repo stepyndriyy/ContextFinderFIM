@@ -4,6 +4,7 @@
 
 Позволяет обработать указанные файлы, применить к ним различные 
 трансформации и создать датасет для обучения или тестирования моделей.
+Поддерживает обработку нескольких проектов одновременно.
 """
 import os
 import sys
@@ -88,7 +89,8 @@ def create_dataset(examples: List[Dict[str, Any]], config: Dict[str, Any]) -> Be
             original=original_code,
             transformed=transformed_code,
             metadata=metadata,
-            file_path=example.get("file_path"),
+            file_path=example.get("file_path", ""),
+            project_root=example.get("project_root", ""),
         )
         
         # Добавляем контекст, если он есть
@@ -118,7 +120,8 @@ def main():
     # Аргументы для входных файлов
     parser.add_argument("--files", nargs="+", help="Список файлов для обработки")
     parser.add_argument("--files-from", help="Файл со списком файлов для обработки")
-    parser.add_argument("--directory", help="Директория с файлами для обработки")
+    parser.add_argument("--directory", help="Директория с файлами для обработки (устаревший параметр, используйте --directories)")
+    parser.add_argument("--directories", nargs="+", help="Список директорий с файлами для обработки")
     parser.add_argument("--pattern", default="*.py", help="Шаблон для поиска файлов (по умолчанию: *.py)")
     
     # Аргументы для конфигурации и вывода
@@ -144,9 +147,11 @@ def main():
     # Получаем список файлов для обработки
     file_paths = []
     
+    # Обрабатываем аргумент с файлами
     if args.files:
         file_paths.extend(args.files)
     
+    # Обрабатываем аргумент с файлом, содержащим список файлов
     if args.files_from:
         try:
             with open(args.files_from, 'r', encoding='utf-8') as f:
@@ -154,12 +159,23 @@ def main():
         except Exception as e:
             logger.error(f"Ошибка при чтении списка файлов из {args.files_from}: {e}")
     
-    if args.directory:
-        pattern = os.path.join(args.directory, args.pattern)
-        print(pattern)
-        file_paths.extend(glob.glob(pattern, recursive=True))
+    # Обрабатываем список директорий (новый функционал)
+    directories = []
+    if args.directories:
+        directories.extend(args.directories)
     
-    print(file_paths)
+    # Для обратной совместимости обрабатываем одиночную директорию
+    if args.directory:
+        directories.append(args.directory)
+        logger.warning("Параметр --directory устарел, используйте --directories для указания нескольких директорий")
+    
+    # Обрабатываем каждую директорию
+    for directory in directories:
+        pattern = os.path.join(directory, args.pattern)
+        matching_files = glob.glob(pattern, recursive=True)
+        logger.info(f"В директории {directory} найдено {len(matching_files)} файлов по шаблону {args.pattern}")
+        file_paths.extend(matching_files)
+    
     # Проверяем, что есть файлы для обработки
     if not file_paths:
         logger.error("Не указаны файлы для обработки")
@@ -172,23 +188,44 @@ def main():
         logger.error("Ни один из указанных файлов не существует")
         sys.exit(1)
     
-    logger.info(f"Найдено {len(file_paths)} файлов для обработки")
+    logger.info(f"Всего найдено {len(file_paths)} файлов для обработки из {len(directories)} директорий")
     
-    # Создаем экземпляр CodeProcessor
-    processor = CodeProcessor(config)
+
+    all_examples = []
+    for directory in directories:
+        logger.info(f"Обработка директории: {directory}")
+        
+        # Создаем копию конфигурации с обновленным project_root для текущей директории
+        current_config = config.copy()
+        current_config["project_root"] = directory
+        
+        pattern = os.path.join(directory, args.pattern)
+        matching_files = glob.glob(pattern, recursive=True)
+        logger.info(f"В директории {directory} найдено {len(matching_files)} файлов по шаблону {args.pattern}")
+        
+        if matching_files:
+            # Создаем процессор с обновленной конфигурацией
+            processor = CodeProcessor(current_config)
+            
+            # Генерируем примеры для текущей директории
+            directory_examples = generate_examples(processor, matching_files)
+            all_examples.extend(directory_examples)
+            logger.info(f"Сгенерировано {len(directory_examples)} примеров из директории {directory}")
     
-    # Генерируем примеры
-    examples = generate_examples(processor, file_paths)
-    
-    if not examples:
+    # Общее количество примеров
+    logger.info(f"Всего сгенерировано {len(all_examples)} примеров из {len(directories)} директорий")
+
+    if not all_examples:
         logger.error("Не удалось сгенерировать примеры")
         sys.exit(1)
     
     # Создаем директорию для выходных данных
     os.makedirs(args.output_dir, exist_ok=True)
     
+    logger.info(f"Создание датасета из {len(all_examples)} примеров")
+    
     # Создаем датасет
-    dataset = create_dataset(examples, config)
+    dataset = create_dataset(all_examples, config)
     
     # Сохраняем датасет
     dataset_path = dataset.save_to_disk(args.output_dir)

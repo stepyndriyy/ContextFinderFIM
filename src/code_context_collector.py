@@ -103,9 +103,27 @@ class CodeContextCollector:
             Абсолютный путь к файлу
         """
         path = Path(file_path)
-        if not path.is_absolute():
-            path = (self.project_root / path).resolve()
-        return path
+        if path.is_absolute():
+            return path
+        
+        # First check if the file exists relative to the current working directory
+        if Path(file_path).exists():
+            return Path(file_path).resolve()
+        
+        # Then check if the file exists relative to the project root
+        if (self.project_root / file_path).exists():
+            return (self.project_root / file_path).resolve()
+        
+        # As a fallback, try to intelligently handle path components
+        # Split the file_path and remove any parts that might overlap with project_root
+        path_parts = list(path.parts)
+        for part in self.project_root.parts:
+            if path_parts and path_parts[0] == part:
+                path_parts.pop(0)
+            else:
+                break
+        
+        return (self.project_root / Path(*path_parts)).resolve()
     
     def _process_file(self, file_path: Path) -> None:
         """
@@ -334,39 +352,79 @@ class CodeContextCollector:
         if first_part in self.std_libs or first_part in self.external_libs:
             return None
         
-        # Пытаемся найти модуль относительно текущего файла
-        # Сначала проверяем относительный импорт
+        # Получаем директорию импортирующего файла и все родительские директории
         parent_dir = importing_file.parent
         
         # Преобразуем точки в пути директорий
         module_parts = import_name.split('.')
         
-        # Проверяем возможные пути к файлу
+        # Список возможных путей для проверки
         possible_paths = []
         
-        # Путь 1: Простой импорт как файл в той же директории (только если нет вложенности)
+        # 1. Пытаемся найти модуль как локальный импорт в той же директории
         if len(module_parts) == 1:
-            path1 = parent_dir / f"{module_parts[0]}.py"
-            possible_paths.append(path1)
-
-        # Путь 2: Вложенный импорт с учетом всех частей пути
+            possible_paths.append(parent_dir / f"{module_parts[0]}.py")
+        
+        # 2. Проверяем, не является ли первая часть импорта самим пакетом
+        # Ищем корень пакета, двигаясь вверх по дереву директорий
+        potential_package_root = parent_dir
+        package_roots = []
+        
+        # Проверяем все родительские директории на наличие __init__.py
+        while str(potential_package_root) != str(potential_package_root.parent):
+            if (potential_package_root / "__init__.py").exists():
+                # Если нашли __init__.py, это может быть корнем пакета
+                package_roots.append(potential_package_root)
+                
+                # Проверяем, совпадает ли имя директории с первой частью импорта
+                if potential_package_root.name == first_part:
+                    # Это корень пакета с тем же именем, что и импорт
+                    # Например, структура: sompath/click/src/click/
+                    # Импорт: from click.shell_completion import ...
+                    
+                    # Строим путь от корня пакета
+                    module_path = potential_package_root
+                    for part in module_parts[1:]:
+                        module_path = module_path / part
+                    possible_paths.append(module_path.with_suffix('.py'))
+                    
+                    # Также проверяем вариант с __init__.py
+                    if len(module_parts) > 1:
+                        possible_paths.append(module_path / "__init__.py")
+            
+            potential_package_root = potential_package_root.parent
+        
+        # 3. Вложенный импорт с учетом всех частей пути
         module_path = parent_dir
         for part in module_parts[:-1]:
             module_path = module_path / part
         module_path = module_path / f"{module_parts[-1]}.py"
         possible_paths.append(module_path)
         
-        # Путь 3: Импорт относительно корня проекта
+        # 4. Импорт относительно корня проекта
         module_path = '/'.join(module_parts)
-        path3 = self.project_root / f"{module_path}.py"
-        possible_paths.append(path3)
+        possible_paths.append(self.project_root / f"{module_path}.py")
         
-        # Путь 4: Импорт как пакет относительно корня проекта
-        path4 = self.project_root / module_path / "__init__.py"
-        possible_paths.append(path4)
+        # 5. Импорт как пакет относительно корня проекта
+        possible_paths.append(self.project_root / module_path / "__init__.py")
+        
+        # 6. Используем все найденные корни пакетов
+        for package_root in package_roots:
+            module_path = package_root.parent  # Поднимаемся на уровень выше корня пакета
+            for part in module_parts:
+                module_path = module_path / part
+            possible_paths.append(module_path.with_suffix('.py'))
+            possible_paths.append(module_path / "__init__.py")
+        
+        # Устраняем дубликаты в путях
+        unique_paths = []
+        for path in possible_paths:
+            str_path = str(path)
+            if str_path not in [str(p) for p in unique_paths]:
+                unique_paths.append(path)
         
         # Проверяем все возможные пути
-        for path in possible_paths:
+        for path in unique_paths:
             if path.exists():
                 return path
         

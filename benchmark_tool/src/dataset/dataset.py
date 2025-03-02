@@ -122,7 +122,7 @@ class BenchmarkDataset:
         # Сохраняем каждый пример в отдельный файл
         examples_dir = dataset_dir / "examples"
         os.makedirs(examples_dir, exist_ok=True)
-        
+        print(f'{len(self.examples)=}')
         for example in self.examples:
             example_path = examples_dir / f"{example.id}.json"
             with open(example_path, 'w', encoding='utf-8') as f:

@@ -7,3 +7,4 @@ projects/*
 logs
 datasets/*
 view_examples.py
+exec.sh

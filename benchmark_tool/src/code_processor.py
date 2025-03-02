@@ -65,16 +65,17 @@ class CodeProcessor:
         
         # Создаем выходную директорию, если её нет
         os.makedirs(self.output_dir, exist_ok=True)
-    
+
     def process_file(self, file_path: str) -> List[Dict[str, Any]]:
         """
         Обрабатывает один файл, применяя трансформации и генерируя примеры.
+        Применяет каждую трансформацию к исходному файлу, создавая отдельные примеры.
         
         Args:
             file_path: Путь к обрабатываемому файлу
             
         Returns:
-            Список сгенерированных примеров
+            Список сгенерированных примеров, где каждый пример содержит одну трансформацию
         """
         logger.info(f"Обработка файла: {file_path}")
         
@@ -89,38 +90,78 @@ class CodeProcessor:
             original_code = f.read()
         
         examples = []
+        
+        # Для function_body трансформации - соберем все доступные функции
+        available_functions = []
+        if any(t.__class__.__name__ == 'FunctionBodyRemover' for t in self.transformers):
+            functions, methods = ast_parser.find_functions(ast_tree)
+            all_functions = functions + methods
+            
+            # Фильтруем функции, которые можно трансформировать
+            for transformer in self.transformers:
+                if transformer.__class__.__name__ == 'FunctionBodyRemover':
+                    available_functions = [f for f in all_functions if transformer.can_transform(f)]
+                    break
+        
+        # Перемешиваем доступные функции
+        random.shuffle(available_functions)
+        
+        # Лимитируем количество семплов
+        transformations_limit = min(self.max_transformations, len(available_functions)) if available_functions else self.max_transformations
         transformations_applied = 0
         
-        # Пытаемся применить несколько разных трансформаций
-        while transformations_applied < self.max_transformations:
-            # Выбираем трансформацию
-            transformation = self.select_transformation(ast_tree)
-            if not transformation:
-                logger.info(f"Не найдено подходящих трансформаций для {file_path}")
-                break
-            
-            # Применяем трансформацию
-            transformed_code, metadata = self.apply_transformation(original_code, file_path, transformation)
-            
-            # Если трансформация применена успешно, генерируем пример
-            if metadata.get('success', False):
-                # Собираем контекст кода
-                context = self.collect_context(file_path)
-                
-                # Создаем пример
-                # relative_path = os.path.relpath(file_path, self.config.get('project_root', '.'))
-                example = self.generate_example(original_code, transformed_code, metadata, context, file_path)
-                examples.append(example)
-                
-                transformations_applied += 1
-                logger.info(f"Применена трансформация {transformation.__class__.__name__} к {file_path}")
-            else:
-                logger.info(f"Трансформация {transformation.__class__.__name__} не удалась: {metadata.get('reason', 'Неизвестная причина')}")
-                # Пробуем другую трансформацию
-                continue
+        # Применяем FunctionBodyRemover к разным функциям
+        for func in available_functions[:transformations_limit]:
+            for transformer in self.transformers:
+                if transformer.__class__.__name__ == 'FunctionBodyRemover':
+                    # Для каждой функции делаем отдельную трансформацию к исходному коду
+                    transformed_code, metadata = self._apply_function_body_transformation(original_code, file_path, transformer, func)
+                    
+                    if metadata.get('success', False):
+                        # Собираем контекст кода
+                        context = self.collect_context(file_path)
+                        
+                        # Создаем пример для этой функции
+                        example = self.generate_example(original_code, transformed_code, metadata, context, file_path)
+                        examples.append(example)
+                        
+                        transformations_applied += 1
+                        logger.info(f"Применена трансформация {transformer.__class__.__name__} к функции {func.name} в {file_path}")
+                    break
+        
+        # Добавляем другие типы трансформаций, если нужно
+        # Здесь можно добавить аналогичную логику для FunctionCallRemover и ImportOptimizer
         
         return examples
-    
+
+    def _apply_function_body_transformation(self, code: str, file_path: str, transformer, func_node) -> Tuple[str, Dict[str, Any]]:
+        """
+        Применяет трансформацию удаления тела функции к конкретной функции.
+        
+        Args:
+            code: Исходный код
+            file_path: Путь к файлу (для логирования)
+            transformer: Экземпляр трансформатора
+            func_node: AST узел функции для трансформации
+            
+        Returns:
+            Кортеж из трансформированного кода и метаданных
+        """
+        try:
+            transformed_code, metadata = transformer.remove_function_body(func_node, code)
+            
+            if metadata.get("success", False):
+                logger.info(f"Трансформация {transformer.__class__.__name__} успешно применена к функции {func_node.name}.")
+            else:
+                logger.warning(f"Трансформация {transformer.__class__.__name__} не удалась для функции {func_node.name}: {metadata.get('reason', 'Неизвестная причина')}")
+            
+            return transformed_code, metadata
+        except Exception as e:
+            import traceback
+            logger.error(f"Ошибка при применении трансформации {transformer.__class__.__name__} к функции {func_node.name}: {e}")
+            logger.debug(traceback.format_exc())
+            return code, {"success": False, "error": str(e)}
+
     def select_transformation(self, ast_tree: ast.Module) -> Optional[Any]:
         """
         Выбирает подходящую трансформацию для данного AST дерева.
@@ -242,7 +283,8 @@ class CodeProcessor:
             "transformation_type": metadata.get('type', 'unknown'),
             "metadata": metadata,
             "context": context.get('context', ''),
-            "file_path": file_path  # Добавляем путь к файлу
+            "file_path": file_path,
+            "project_root": self.config.get('project_root', '')  # Добавляем корень проекта
         }
     
         # Для FIM добавляем информацию о курсоре

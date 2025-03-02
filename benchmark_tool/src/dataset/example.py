@@ -17,20 +17,22 @@ class BenchmarkExample:
     Хранит оригинальный и трансформированный код, метаданные о трансформации
     и контекст разных уровней.
     """
-    def __init__(self, original: str, transformed: str, metadata: Dict[str, Any], file_path: str):
+    def __init__(self, original: str, transformed: str, metadata: Dict[str, Any], file_path: str, project_root: str):
         """
         Инициализирует пример.
-        
+    
         Args:
             original: Оригинальный код
             transformed: Трансформированный код
             metadata: Метаданные о трансформации
             file_path: Путь к файлу относительно корня проекта
+            project_root: Путь к корню проекта, из которого был взят пример
         """
         self.original_code = original
         self.transformed_code = transformed
         self.metadata = metadata
         self.file_path = file_path
+        self.project_root = project_root
         self.context = {}
         self.id = self._generate_id()
         self.created_at = datetime.now().isoformat()
@@ -54,7 +56,8 @@ class BenchmarkExample:
         """
         result = {
             'id': self.id,
-            'file_path': self.file_path,  # Добавляем путь к файлу
+            'file_path': self.file_path,
+            'project_root': self.project_root,  # Добавляем корень проекта
             'original_code': self.original_code,
             'transformed_code': self.transformed_code,
             'metadata': self.metadata,
@@ -94,7 +97,8 @@ class BenchmarkExample:
             original=data['original_code'],
             transformed=data['transformed_code'],
             metadata=data['metadata'],
-            file_path=data.get('file_path', '')  # Добавляем получение file_path
+            file_path=data.get('file_path', ''),
+            project_root=data.get('project_root', '')  # Получаем корень проекта
         )
         
         # Восстанавливаем другие поля
@@ -108,7 +112,6 @@ class BenchmarkExample:
             example.created_at = data['created_at']
         
         return example
-
     def get_task_description(self) -> str:
         """
         Возвращает описание задачи для примера.
@@ -159,10 +162,17 @@ class BenchmarkExample:
         Returns:
             Строка с идентификатором
         """
-        # Создаем хеш на основе оригинального кода и типа трансформации
-        content = f"{self.original_code}_{self.metadata.get('type', 'unknown')}"
-        return hashlib.md5(content.encode()).hexdigest()
-    
+        # Включаем в хеш больше деталей для уникальности
+        unique_elements = [
+            self.transformed_code,
+            self.metadata.get('type', 'unknown'),
+            self.file_path,  # Путь к файлу
+            self.metadata.get('function_name', ''),  # Имя функции (если есть)
+            # self.created_at,  # Время создания примера
+        ]
+        
+        content = "_".join(unique_elements)
+        return hashlib.md5(content.encode()).hexdigest()    
     def __str__(self) -> str:
         """
         Возвращает строковое представление примера.

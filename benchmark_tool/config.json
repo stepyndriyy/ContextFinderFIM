@@ -1,7 +1,7 @@
 {
     "project_root": "/home/user/project",
     "output_dir": "generated_examples",
-    "max_transformations_per_file": 1,
+    "max_transformations_per_file": 5,
     "context_level": "local",
     "max_file_size": 500000,
     "transformers": {

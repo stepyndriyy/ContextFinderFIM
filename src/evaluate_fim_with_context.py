@@ -346,10 +346,9 @@ def main():
         print(f"Среднее сходство по Левенштейну: {metrics.get('avg_levenshtein_similarity', 'N/A'):.4f}")
         print(f"Среднее время выполнения: {metrics.get('avg_execution_time', 'N/A'):.2f} с")
     
-    # print(f"Общее количество примеров: {summary['total_examples']}")
-    # print(f"Успешно оценено: {summary['valid_examples']}")
-    # print(f"Количество ошибок: {summary['error_count']}")
-    print(summary)
+    print(f"Общее количество примеров: {summary['total_examples']}")
+    print(f"Успешно оценено: {summary['valid_examples']}")
+    print(f"Количество ошибок: {summary['error_count']}")
     print(f"Полные результаты сохранены в {args.output}")
 
 
