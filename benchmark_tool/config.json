@@ -1,0 +1,28 @@
+{
+    "project_root": "/home/user/project",
+    "output_dir": "generated_examples",
+    "max_transformations_per_file": 1,
+    "context_level": "local",
+    "max_file_size": 500000,
+    "transformers": {
+        "function_body": {
+            "enabled": true,
+            "probability": 0.7,
+            "preserve_docstring": true,
+            "min_body_lines": 3
+        },
+        "function_call": {
+            "enabled": false,
+            "probability": 0.5,
+            "target_modules": [],
+            "max_calls_removal": 1,
+            "replacement_strategy": "first_arg"
+        },
+        "import_optimizer": {
+            "enabled": false,
+            "probability": 0.3,
+            "remove_unused": true,
+            "combine_imports": true
+        }
+    }
+}

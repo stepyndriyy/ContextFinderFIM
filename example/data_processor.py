@@ -11,9 +11,8 @@ from typing import Dict, List, Tuple, Union, Optional
 import os
 from datetime import datetime
 
-# # Импортируем вспомогательную функцию из второго файла
+# Импортируем вспомогательную функцию
 from example.time_series_utils import detect_anomalies, calculate_seasonal_decomposition
-import code_context_collector
 
 
 class TimeSeriesProcessor:

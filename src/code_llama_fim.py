@@ -97,17 +97,18 @@ class CodeLlamaFIM:
         # Собираем новый контекст
         file_contexts = self.context_collector.collect_context(file_path)
         
-        # Исключаем сам файл из контекста, так как он будет обрабатываться отдельно
-        if abs_path in file_contexts:
-            del file_contexts[abs_path]
+        # # Исключаем сам файл из контекста, так как он будет обрабатываться отдельно
+        # if abs_path in file_contexts:
+        #     del file_contexts[abs_path]
         
-        # Формируем контекст в виде строки
-        context_text = ""
-        for path, content in file_contexts.items():
-            # Добавляем путь и содержимое в контекст
-            rel_path = os.path.relpath(path, os.path.dirname(abs_path))
-            context_text += f"# Файл: {rel_path}\n{content}\n\n"
-        
+        # # Формируем контекст в виде строки
+        # context_text = ""
+        # for path, content in file_contexts.items():
+        #     # Добавляем путь и содержимое в контекст
+        #     rel_path = os.path.relpath(path, os.path.dirname(abs_path))
+        #     context_text += f"# Файл: {rel_path}\n{content}\n\n"
+        context_text = self.context_collector.format_context(add_current_file=False)
+
         # Сохраняем в кэш
         self.context_cache[abs_path] = context_text
         
@@ -143,9 +144,9 @@ class CodeLlamaFIM:
                 # Если префикс уже большой, используем только начало контекста
                 max_context_length = 10000  # Ограничиваем длину контекста
                 if len(project_context) > max_context_length:
-                    project_context = project_context[:max_context_length] + "\n# ... (дополнительный контекст опущен)\n\n"
+                    project_context = project_context[:max_context_length] + "\n# ... (context missed)\n\n"
                 
-                prefix = f"{project_context}# Текущий файл: {os.path.basename(file_path)}\n{prefix}"
+                prefix = f"{project_context}\n\n# Current file{os.path.basename(file_path)}\n{prefix}"
         
         # Сохраняем оригинальный промпт для отладки
         original_prompt = f"{prefix} <FILL_ME> {suffix}"

@@ -3,3 +3,7 @@ models/*
 .pycache
 .vscode
 __pycache__
+projects/*
+logs
+datasets/*
+view_examples.py

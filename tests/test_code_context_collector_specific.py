@@ -3,7 +3,7 @@ import os
 import tempfile
 import ast
 from pathlib import Path
-from code_context_collector import CodeContextCollector, ImportInfo, CodeElement
+from src.code_context_collector import CodeContextCollector, ImportInfo, CodeElement
 
 
 @pytest.fixture

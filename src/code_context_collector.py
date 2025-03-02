@@ -471,7 +471,7 @@ class CodeContextCollector:
         
         return filtered_elements
     
-    def format_context(self) -> str:
+    def format_context(self, add_current_file=False) -> str:
         """
         Форматирует собранный контекст в удобный для использования вид.
         Включает только используемые элементы кода.
@@ -481,15 +481,24 @@ class CodeContextCollector:
         """
         filtered_elements = self._filter_used_elements()
         context = []
-        
         for module_name, elements in filtered_elements.items():
-            module_content = [f"# Модуль: {module_name}"]
+            # Пропускаем стартовый файл если add_current_file=False
+            if not add_current_file and module_name not in self.imports:
+                continue
+
+            if module_name in self.imports:
+                module_path = self.imports[module_name].module_path
+                module_content = [f"# File: {module_path}"]
+            else:
+                # Для исходного файла или других случаев, когда модуль не в imports
+                module_content = [f"# Module: {module_name}"]
             
+
             # Добавляем элементы модуля
             for element_name, element in elements.items():
                 module_content.append(element.source_code)
             
-            context.append("\n".join(module_content))
+            context.append("\n\n".join(module_content))
         
         return "\n\n".join(context)
     
